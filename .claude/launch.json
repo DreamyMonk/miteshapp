@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "host-dashboard", "runtimeExecutable": "npm", "runtimeArgs": ["--prefix", "host-dashboard", "run", "dev"], "port": 3000 }
+  ]
+}

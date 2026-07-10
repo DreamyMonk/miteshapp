@@ -1,0 +1,106 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Platform admins — email-OTP accounts allowed to run the admin panel.
+    // OWNER emails (below) are always super-admins; additional admins are managed
+    // dynamically in the `admins/{email}` collection.
+    function ownerEmail() {
+      return request.auth != null &&
+        request.auth.token.email in ['invitekaroo@gmail.com'];
+    }
+    function adminDocPath() {
+      return /databases/$(database)/documents/admins/$(request.auth.token.email);
+    }
+    function isAdmin() {
+      return ownerEmail() ||
+        (request.auth != null && exists(adminDocPath()));
+    }
+    function isSuperAdmin() {
+      return ownerEmail() ||
+        (request.auth != null && exists(adminDocPath()) &&
+         get(adminDocPath()).data.role == 'super');
+    }
+
+    // Admin roster — any admin can read (to resolve their own access);
+    // only super-admins can add/edit/remove admins.
+    match /admins/{email} {
+      allow read: if isAdmin();
+      allow write: if isSuperAdmin();
+    }
+
+    // Host applications submitted from the app (s23). Any signed-in app user may
+    // create one; only platform admins (or the applicant) can read; only admins
+    // can update status (approve/reject) or delete.
+    match /hostApplications/{id} {
+      allow create: if request.auth != null;
+      allow read: if isAdmin() ||
+        (request.auth != null && resource.data.applicantUid == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    // Public published programmes — read by everyone (the app), written by any
+    // signed-in client (dashboard host).
+    match /programs/{id} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Host account profile — owner, plus platform admins (creator lookup + host
+    // tag / suspend / delete in user management).
+    match /hosts/{uid} {
+      allow read, write: if isAdmin() ||
+        (request.auth != null && request.auth.uid == uid);
+    }
+
+    // App users' private data — owner only, plus platform admins (user mgmt:
+    // 360 view / suspend / delete).
+    match /users/{uid} {
+      allow read, write: if isAdmin() ||
+        (request.auth != null && request.auth.uid == uid);
+    }
+
+    // Email-OTP codes — server (admin SDK) only; no client access ever.
+    match /otps/{id} {
+      allow read, write: if false;
+    }
+
+    // TEST login codes — the app publishes a generated code here (no SMS) so
+    // the admin panel can display it. Only admins can read/clear them.
+    // NOTE: `create` is open for testing; tighten or remove before production.
+    match /otpDebug/{id} {
+      allow create, update: if true;
+      allow read, delete: if isAdmin();
+    }
+
+    // Community profile — public read; the owner (host) can write; platform
+    // admins can write/delete (community mgmt: suspend / delete).
+    match /communities/{cid} {
+      allow read: if true;
+      allow write: if isAdmin() || (request.auth != null &&
+        (resource == null || resource.data.ownerUid == request.auth.uid ||
+         request.resource.data.ownerUid == request.auth.uid));
+
+      // People/comms subcollections.
+      // subscribers/attendance/rsvps: any signed-in app user may write their own
+      //   record (doc id can be their uid) and read the roster; the host reads all.
+      match /subscribers/{doc} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null;
+      }
+      match /attendance/{doc} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null;
+      }
+      match /rsvps/{doc} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null;
+      }
+      // Host-only management collections.
+      match /{coll}/{doc} {
+        allow read, write: if request.auth != null &&
+          get(/databases/$(database)/documents/communities/$(cid)).data.ownerUid == request.auth.uid;
+      }
+    }
+  }
+}

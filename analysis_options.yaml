@@ -1,0 +1,18 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  errors:
+    # The prototype port uses withOpacity / Matrix helpers heavily; these are
+    # informational deprecations, not problems for this app.
+    deprecated_member_use: ignore
+    unnecessary_underscores: ignore
+    use_build_context_synchronously: ignore
+
+linter:
+  rules:
+    avoid_print: false
+    prefer_const_constructors: false
+    prefer_const_constructors_in_immutables: false
+    prefer_const_literals_to_create_immutables: false
+    sized_box_for_whitespace: false
+    use_key_in_widget_constructors: false

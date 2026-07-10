@@ -1,0 +1,12 @@
+{
+  "hosting": {
+    "site": "host-invitekaroo",
+    "public": "host-dashboard/out",
+    "cleanUrls": true,
+    "trailingSlash": true,
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}

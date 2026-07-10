@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "934224948749",
+    "project_id": "invitekaroo-823b3",
+    "storage_bucket": "invitekaroo-823b3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:934224948749:android:a4894523c9ee56a30c6f44",
+        "android_client_info": {
+          "package_name": "com.invitekaroo.invitekaroo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAlC8bDs1WT3qNm-9EiTIUCdHcQCpQqTTI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
