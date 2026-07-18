@@ -26,12 +26,14 @@ workflows:
       - name: Install CocoaPods dependencies
         script: |
           find . -name "Podfile" -execdir pod install \; || true
-      - name: Set up code signing (fetch or create cert + provisioning profile)
+      - name: Set up code signing (create cert + provisioning profile)
         script: |
           keychain initialize
-          # --create makes the distribution certificate AND the app-store
-          # provisioning profile if they don't exist yet (needs the App ID
-          # registered in Apple Developer → Identifiers).
+          # A distribution certificate's private key only exists on the machine
+          # that created it. Create a fresh one here (Codemagic generates the
+          # key and --save stores both) so signing actually has a usable
+          # identity, then create/fetch the app-store provisioning profile.
+          app-store-connect certificates create --type IOS_DISTRIBUTION --save
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --create
