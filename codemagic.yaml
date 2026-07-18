@@ -15,30 +15,23 @@ workflows:
     integrations:
       app_store_connect: InviteKaroo ASC   # must match the integration name in Codemagic
     environment:
+      # Codemagic's automatic signing: generates the private key, creates the
+      # distribution certificate AND the app-store provisioning profile using
+      # the App Store Connect integration below, and installs them.
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.invitekaroo.invitekaroo
       flutter: stable
       xcode: latest
       cocoapods: default
-      vars:
-        BUNDLE_ID: "com.invitekaroo.invitekaroo"
     scripts:
       - name: Get Flutter packages
         script: flutter pub get
       - name: Install CocoaPods dependencies
         script: |
           find . -name "Podfile" -execdir pod install \; || true
-      - name: Set up code signing (create cert + provisioning profile)
-        script: |
-          keychain initialize
-          # A distribution certificate's private key only exists on the machine
-          # that created it. Create a fresh one here (Codemagic generates the
-          # key and --save stores both) so signing actually has a usable
-          # identity, then create/fetch the app-store provisioning profile.
-          app-store-connect certificates create --type IOS_DISTRIBUTION --save
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --create
-          keychain add-certificates
-          xcode-project use-profiles
+      - name: Apply code-signing profiles to the project
+        script: xcode-project use-profiles
       - name: Build signed IPA
         script: |
           flutter build ipa --release \
