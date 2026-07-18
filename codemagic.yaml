@@ -3,8 +3,8 @@
 # ── One-time setup in the Codemagic web UI ──
 # 1. Codemagic → Teams → Integrations → App Store Connect → add your API key
 #    (Issuer ID + Key ID + the .p8). Name it exactly "InviteKaroo ASC".
-# 2. Apple Developer → Identifiers → make sure com.invitekaroo.invitekaroo is
-#    registered with the "Push Notifications" capability (Broadcast unticked).
+# 2. Apple Developer → Identifiers → com.invitekaroo.invitekaroo registered with
+#    the "Push Notifications" capability (Broadcast unticked).
 # 3. App Store Connect → Apps → create the app for that bundle id.
 
 workflows:
@@ -15,23 +15,30 @@ workflows:
     integrations:
       app_store_connect: InviteKaroo ASC   # must match the integration name in Codemagic
     environment:
-      # Codemagic's automatic signing: generates the private key, creates the
-      # distribution certificate AND the app-store provisioning profile using
-      # the App Store Connect integration below, and installs them.
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.invitekaroo.invitekaroo
       flutter: stable
       xcode: latest
       cocoapods: default
+      vars:
+        BUNDLE_ID: "com.invitekaroo.invitekaroo"
     scripts:
       - name: Get Flutter packages
         script: flutter pub get
       - name: Install CocoaPods dependencies
         script: |
           find . -name "Podfile" -execdir pod install \; || true
-      - name: Apply code-signing profiles to the project
-        script: xcode-project use-profiles
+      - name: Set up code signing (generate key → create cert + profile)
+        script: |
+          keychain initialize
+          # Apple can only ISSUE a certificate against a private key we own.
+          # Generate one, then let fetch-signing-files create the distribution
+          # certificate (with this key) AND the app-store provisioning profile.
+          openssl genrsa -out /tmp/ik_cert_key.pem 2048
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --certificate-key=@file:/tmp/ik_cert_key.pem \
+            --create
+          keychain add-certificates
+          xcode-project use-profiles
       - name: Build signed IPA
         script: |
           flutter build ipa --release \
@@ -44,4 +51,4 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        submit_to_testflight: true          # auto-upload to TestFlight after a green build
+        submit_to_testflight: true
