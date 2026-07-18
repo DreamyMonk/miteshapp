@@ -124,7 +124,7 @@ class _S34State extends State<S34> {
   void _toggleSubscribe() {
     if (_name.isEmpty) return;
     final next = !_subscribed;
-    AppData.I.setSubscribed(_name, next);
+    AppData.I.setSubscribed(_name, next, cid: _f('id'));
     toast(next ? 'Subscribed to $_name' : 'Unsubscribed');
   }
 

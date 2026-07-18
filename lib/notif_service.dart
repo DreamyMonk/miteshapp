@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
@@ -28,6 +30,12 @@ class NotifService {
           priority: Priority.high,
           icon: '@mipmap/ic_launcher',
         ),
+        // iOS: show the banner even while the app is foregrounded.
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
       );
 
   static Future<void> init() async {
@@ -39,6 +47,12 @@ class NotifService {
 
     const initSettings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      // iOS: request notification permission + allow local/scheduled alerts.
+      iOS: DarwinInitializationSettings(
+        requestAlertPermission: true,
+        requestBadgePermission: true,
+        requestSoundPermission: true,
+      ),
     );
     try {
       await _fln.initialize(initSettings);
@@ -125,6 +139,7 @@ class NotifService {
     try {
       await _fln.initialize(const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        iOS: DarwinInitializationSettings(),
       ));
       await _fln
           .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
@@ -177,6 +192,73 @@ class NotifService {
     await showNow('Test notification', 'Notifications are working on this device ✓');
     await scheduleAt('Scheduled reminder', 'This reminder was scheduled 5 seconds ago.',
         DateTime.now().add(const Duration(seconds: 5)));
+  }
+
+  // ─────────── Push diagnostics (Settings screen) ───────────
+  // Base URL of the host dashboard that owns the FCM sender routes.
+  static const String apiBase = 'https://host.invitekaroo.com';
+
+  /// Re-fetch this device's FCM registration token. Returns null if FCM
+  /// registration is failing (e.g. no Google Play Services / no network) — in
+  /// which case no push (topic OR direct) can ever arrive on this device.
+  static Future<String?> refreshToken() async {
+    try {
+      fcmToken = await FirebaseMessaging.instance.getToken();
+    } catch (_) {
+      fcmToken = null;
+    }
+    return fcmToken;
+  }
+
+  /// Re-run every topic subscription (all_users + each followed community) and
+  /// return the topics we (re)subscribed to, so the diagnostic can show exactly
+  /// what this device is registered for. Surfaces silently-failed subscriptions.
+  static Future<List<String>> resubscribeAll() async {
+    final topics = <String>[];
+    try {
+      final fm = FirebaseMessaging.instance;
+      await fm.subscribeToTopic('all_users');
+      topics.add('all_users');
+      for (final name in AppData.I.subscriptions) {
+        final cid = AppData.I.cidForName(name);
+        if (cid != null && cid.isNotEmpty) {
+          await fm.subscribeToTopic('community_$cid');
+          topics.add('community_$cid');
+        }
+      }
+    } catch (_) {}
+    return topics;
+  }
+
+  /// Ask the server to push straight to THIS device's token — bypassing topics
+  /// entirely. If this arrives, FCM delivery works and the problem is topic
+  /// subscription; if it doesn't, FCM reception on this device is broken.
+  static Future<String> sendTestPushToThisDevice() async {
+    final token = fcmToken ?? await refreshToken();
+    if (token == null || token.isEmpty) {
+      return 'No FCM token — FCM registration is failing on this device (Play Services / network). No push can arrive.';
+    }
+    try {
+      final r = await http.post(
+        Uri.parse('$apiBase/api/test-push'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'token': token,
+          'title': 'Direct test push ✓',
+          'body': 'If you see this, FCM delivery to this device works.',
+        }),
+      );
+      Map<String, dynamic> j = {};
+      try {
+        j = jsonDecode(r.body) as Map<String, dynamic>;
+      } catch (_) {}
+      if (r.statusCode == 200 && j['ok'] == true) {
+        return 'Sent ✓ — watch for the notification now.';
+      }
+      return 'Server error ${r.statusCode}: ${j['error'] ?? r.body}';
+    } catch (e) {
+      return 'Request failed: $e';
+    }
   }
 
   static DateTime? _eventDateTime(UserEvent e) {

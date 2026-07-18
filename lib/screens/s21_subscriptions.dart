@@ -169,7 +169,7 @@ class _S21State extends State<S21> {
             Press(
               scale: .98,
               onTap: () {
-                AppData.I.setSubscribed(name, false);
+                AppData.I.setSubscribed(name, false, cid: '${c['id'] ?? ''}');
                 toast('Unsubscribed from $name');
               },
               child: Container(

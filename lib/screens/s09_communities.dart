@@ -317,7 +317,7 @@ class _S09State extends State<S09> {
             Press(
               scale: .95,
               onTap: () {
-                AppData.I.setSubscribed(name, true);
+                AppData.I.setSubscribed(name, true, cid: _s(c, 'id'));
                 toast('Subscribed to $name');
               },
               child: Container(

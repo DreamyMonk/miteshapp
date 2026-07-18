@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme.dart';
 import '../app_state.dart';
 import '../session.dart';
@@ -18,6 +19,18 @@ class _S22State extends State<S22> {
   late bool _push = AppData.I.settings['push'] ?? true;
   late bool _reminders = AppData.I.settings['reminders'] ?? true;
   late bool _autoCal = AppData.I.settings['autoCal'] ?? true;
+
+  String? _token;
+  String _diag = '';
+  bool _sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    NotifService.refreshToken().then((t) {
+      if (mounted) setState(() => _token = t);
+    });
+  }
 
   void _setPush(bool v) {
     setState(() => _push = v);
@@ -58,6 +71,49 @@ class _S22State extends State<S22> {
               const Sec('Account'),
               _NavRow('Manage Subscriptions', onTap: () => go('s21')),
               _ValueRow('Language', 'English', onTap: () => toast('Language settings')),
+
+              const Sec('Push diagnostics'),
+              _ValueRow(
+                'FCM token',
+                _token == null || _token!.isEmpty
+                    ? 'unavailable — FCM not registered'
+                    : '${_token!.substring(0, _token!.length < 12 ? _token!.length : 12)}… (tap to copy)',
+                onTap: _token == null || _token!.isEmpty
+                    ? null
+                    : () {
+                        Clipboard.setData(ClipboardData(text: _token!));
+                        toast('FCM token copied');
+                      },
+              ),
+              _NavRow(
+                _sending ? 'Sending test push…' : 'Send test push to this device',
+                onTap: () async {
+                  if (_sending) return;
+                  setState(() => _sending = true);
+                  toast('Sending test push…');
+                  final res = await NotifService.sendTestPushToThisDevice();
+                  if (mounted) {
+                    setState(() {
+                      _sending = false;
+                      _diag = res;
+                    });
+                  }
+                  toast(res);
+                },
+              ),
+              _NavRow('Re-subscribe push topics', onTap: () async {
+                final topics = await NotifService.resubscribeAll();
+                final msg = topics.isEmpty
+                    ? 'Subscribed to nothing (no token / no followed communities)'
+                    : 'Subscribed: ${topics.join(', ')}';
+                if (mounted) setState(() => _diag = msg);
+                toast(msg);
+              }),
+              if (_diag.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 6, 18, 10),
+                  child: Text(_diag, style: ff(size: rem(.66), color: K.ink4)),
+                ),
 
               const Sec('About'),
               const _ValueRow('Invite Karoo', 'v2.0'),

@@ -339,7 +339,12 @@ class AppData extends ChangeNotifier {
     if (cb == null) return;
     for (final name in subscriptions) {
       final cid = _cidByName(name);
-      if (cid != null) cb(cid, on);
+      if (cid != null && cid.isNotEmpty) {
+        // Remember the id so future re-syncs never depend on name matching —
+        // this also heals subscribers who followed before ids were stored.
+        subscriptionCids[name] = cid;
+        cb(cid, on);
+      }
     }
   }
 
@@ -453,6 +458,7 @@ class AppData extends ChangeNotifier {
         'events': events.map((e) => e.toJson()).toList(),
         'rsvp': rsvp,
         'subs': subscriptions.toList(),
+        'subCids': subscriptionCids,
         'saved': saved.toList(),
         'checkIns': checkIns.map((e) => e.toJson()).toList(),
         'notifs': notifications.map((e) => e.toJson()).toList(),
@@ -504,6 +510,10 @@ class AppData extends ChangeNotifier {
         subscriptions
           ..clear()
           ..addAll((m['subs'] as List).map((e) => e.toString()));
+      }
+      if (m['subCids'] is Map) {
+        subscriptionCids.clear();
+        (m['subCids'] as Map).forEach((k, v) => subscriptionCids['$k'] = '$v');
       }
       if (m['saved'] is List) {
         saved
@@ -630,26 +640,47 @@ class AppData extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setSubscribed(String name, bool on) {
+  void setSubscribed(String name, bool on, {String? cid}) {
     if (on) {
       subscriptions.add(name);
       _pushNote('Subscribed', "You'll get updates from $name", 'community');
     } else {
       subscriptions.remove(name);
     }
+    // Remember the community id for this name so the FCM topic can always be
+    // resolved later (re-sync on launch) even if the name lookup is flaky.
+    if (cid != null && cid.isNotEmpty) {
+      subscriptionCids[name] = cid;
+    }
     _writeSubscriber(name, on); // reflect into the host dashboard
-    final cid = _cidByName(name);
-    if (cid != null) onCommunityTopic?.call(cid, on); // (un)follow push topic
+    // Prefer the exact id passed by the caller (the community the user tapped);
+    // fall back to resolving by name. Using the exact id makes the FCM topic
+    // subscription bulletproof for every new subscriber — it no longer depends
+    // on liveCommunities being loaded or the name matching exactly.
+    final id = (cid != null && cid.isNotEmpty) ? cid : _cidByName(name);
+    if (id != null && id.isNotEmpty) onCommunityTopic?.call(id, on); // (un)follow push topic
     _persist();
     notifyListeners();
   }
 
+  // Remembered community id per subscribed name (persisted) so push-topic
+  // re-subscription on launch never silently fails on a name mismatch.
+  final Map<String, String> subscriptionCids = {};
+
   String? _cidByName(String name) {
+    // Use a remembered id first, then fall back to a whitespace/case-robust
+    // name match against the loaded community list.
+    final remembered = subscriptionCids[name];
+    if (remembered != null && remembered.isNotEmpty) return remembered;
+    final key = name.trim().toLowerCase();
     for (final c in liveCommunities) {
-      if ('${c['name']}'.toLowerCase() == name.toLowerCase()) return '${c['id']}';
+      if ('${c['name']}'.trim().toLowerCase() == key) return '${c['id']}';
     }
     return null;
   }
+
+  /// Public accessor for a community id by name (used by push diagnostics).
+  String? cidForName(String name) => _cidByName(name);
 
   static String _dayLabel() {
     final n = DateTime.now();
@@ -823,6 +854,7 @@ class AppData extends ChangeNotifier {
   static const _kEvents = 'ad_events';
   static const _kRsvp = 'ad_rsvp';
   static const _kSubs = 'ad_subs';
+  static const _kSubCids = 'ad_subcids';
   static const _kSaved = 'ad_saved';
   static const _kCheck = 'ad_checkins';
   static const _kNotifs = 'ad_notifs';
@@ -846,6 +878,11 @@ class AppData extends ChangeNotifier {
         subscriptions
           ..clear()
           ..addAll(subs);
+      }
+      final sc = p.getString(_kSubCids);
+      if (sc != null) {
+        subscriptionCids.clear();
+        (jsonDecode(sc) as Map).forEach((k, v) => subscriptionCids['$k'] = '$v');
       }
       final sv = p.getStringList(_kSaved);
       if (sv != null) {
@@ -887,6 +924,7 @@ class AppData extends ChangeNotifier {
       await p.setString(_kEvents, jsonEncode(events.map((e) => e.toJson()).toList()));
       await p.setString(_kRsvp, jsonEncode(rsvp));
       await p.setStringList(_kSubs, subscriptions.toList());
+      await p.setString(_kSubCids, jsonEncode(subscriptionCids));
       await p.setStringList(_kSaved, saved.toList());
       await p.setString(_kCheck, jsonEncode(checkIns.map((e) => e.toJson()).toList()));
       await p.setString(_kNotifs, jsonEncode(notifications.map((e) => e.toJson()).toList()));

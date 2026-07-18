@@ -244,7 +244,7 @@ class _S06State extends State<S06> {
                 )
               else ...[
                 Btn('Subscribe to $name', kind: BtnKind.p, leading: P.check, onTap: () {
-                  AppData.I.setSubscribed(name, true);
+                  AppData.I.setSubscribed(name, true, cid: _s(c, 'id'));
                   go('s07');
                 }),
                 Padding(
