@@ -1,17 +1,11 @@
 # Codemagic CI/CD — builds the Invite Karoo iOS app and ships it to TestFlight.
 #
-# ── One-time setup in the Codemagic web UI (nothing to build locally) ──
+# ── One-time setup in the Codemagic web UI ──
 # 1. Codemagic → Teams → Integrations → App Store Connect → add your API key
-#    (Issuer ID + Key ID + the .p8 you downloaded). Give it a NAME.
-# 2. Put that exact name in `integrations.app_store_connect` below
-#    (replace "InviteKaroo ASC").
-# 3. In Apple Developer → Identifiers → com.invitekaroo.invitekaroo, make sure
-#    the "Push Notifications" capability is ENABLED (so the signing profile
-#    Codemagic creates includes push).
-# 4. In App Store Connect → Apps, create the app for com.invitekaroo.invitekaroo
-#    (needed before TestFlight upload).
-#
-# Then just push to GitHub and start this workflow in Codemagic.
+#    (Issuer ID + Key ID + the .p8). Name it exactly "InviteKaroo ASC".
+# 2. Apple Developer → Identifiers → make sure com.invitekaroo.invitekaroo is
+#    registered with the "Push Notifications" capability (Broadcast unticked).
+# 3. App Store Connect → Apps → create the app for that bundle id.
 
 workflows:
   ios-testflight:
@@ -19,22 +13,30 @@ workflows:
     instance_type: mac_mini_m2
     max_build_duration: 90
     integrations:
-      app_store_connect: InviteKaroo ASC   # TODO: must match the integration name from step 1
+      app_store_connect: InviteKaroo ASC   # must match the integration name in Codemagic
     environment:
-      ios_signing:
-        distribution_type: app_store        # automatic signing → app-store provisioning profile
-        bundle_identifier: com.invitekaroo.invitekaroo
       flutter: stable
       xcode: latest
       cocoapods: default
+      vars:
+        BUNDLE_ID: "com.invitekaroo.invitekaroo"
     scripts:
       - name: Get Flutter packages
         script: flutter pub get
       - name: Install CocoaPods dependencies
         script: |
           find . -name "Podfile" -execdir pod install \; || true
-      - name: Apply code-signing profiles
-        script: xcode-project use-profiles
+      - name: Set up code signing (fetch or create cert + provisioning profile)
+        script: |
+          keychain initialize
+          # --create makes the distribution certificate AND the app-store
+          # provisioning profile if they don't exist yet (needs the App ID
+          # registered in Apple Developer → Identifiers).
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
+          xcode-project use-profiles
       - name: Build signed IPA
         script: |
           flutter build ipa --release \
@@ -44,7 +46,6 @@ workflows:
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
-      - flutter_drive.log
     publishing:
       app_store_connect:
         auth: integration
